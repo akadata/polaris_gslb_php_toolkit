@@ -31,7 +31,6 @@ function del_topology($datacenter='',$subnet='') {
     // supply datacenter only and the entire datacenter will be removed
     // supply the subnet and datacenter to delete that subnet
     // search datacenters and delete as per the key found
-    if($datacenter=='') return false;
     $topology=read_topology();
     if(!empty($datacenter) && !empty($subnet)) {
          foreach($topology as $id=>$topo) { // walk dc's
@@ -61,7 +60,6 @@ function del_topology($datacenter='',$subnet='') {
 }
 
 function add_topology($datacenter='',$subnet='') {
-    if($datacenter=='') return false;
     // add_topology()  
     // $datacenter = (string)
     // $dubnet = (string)
@@ -95,11 +93,11 @@ function add_topology($datacenter='',$subnet='') {
     return false;
 }
 
-function read_topology($json=false) {    
+function read_topology() {    
     // read topology YAML in to an array.
     global $polaris_topology;
     $topology=array();
-    $gslb_topology= fopen($polaris_topology,"r") or die("Can not open to read ".$polaris_topology."<br/>"); 
+    $gslb_topology= fopen($polaris_topology,"r");
     $t=0;     
     while(! feof($gslb_topology) ) {  // do polaris config
         $parts=fgets( $gslb_topology );
@@ -128,18 +126,14 @@ function read_topology($json=false) {
         } 
     }   
     fclose($gslb_topology);
-    if($json) { 
-        $topology=json_encode($topology);
-    }
     return $topology;
 }
 
 function write_topology($topology='') {
-    if($topology="") return false;
     global $polaris_topology;
     // write the polaris topology file input (array) output (yaml)
     // simply write the array back to YAML
-    $yaml_topology = "# loadbalancer.org generated file, if you update manual configuration it will be reflected here\n";
+    $yaml_topology="# loadbalancer.org generated file, if you update manual configuration it will be reflected here\n";
     foreach($topology as $id=>$topo) {
         extract($topo);
         $yaml_topology .= $datacenter.":\n";
@@ -150,16 +144,22 @@ function write_topology($topology='') {
         }
     }     
     // echo $yaml_topology;
-    $gslb_topology= fopen($polaris_topology,"w") or die("Can not open to write ".$polaris_topology."<br/>");
+
+    $gslb_topology= fopen($polaris_topology,"w") or die("\n\n--- Unable to open file!\n");
     fwrite($gslb_topology, $yaml_topology);
     fclose($gslb_topology);
     return true;
 }
 
+// dont think I use this now. 
+function reorder($topology) {
+    return $topology=array_values($topology);
+}
+
 function read_gslb() {
     // read the polaris topology file and return (array)
     global $polaris_lb;
-    $gslb_polaris = fopen($polaris_lb,"r") or die("Can not open to read ".$polaris_lb."<br/>");
+    $gslb_polaris = fopen($polaris_lb,"r") or die("Can not open polaris-lb.yaml");
     $dn=0;    
     $do=0;    
     $m=0;
@@ -183,16 +183,17 @@ function read_gslb() {
             switch($do) {
                 case 1:
                 if(!in_array($a,array("members","monitor_params","pools","expected_codes")) && !is_numeric($a) && $c=="" && $do=1) { 
-                    
-                    if($a!="") {
-                        if(!isset($iitr)) {
-                            $iitr=0;
-                        } else {
-                            $iitr++;
-                        }
-                        $gslb["pools"][$iitr]['pool']=$a;
+                    if(!isset($iitr)){
+                        $iitr=0;
+                    } else {
+                        $iitr++;
                     }
-
+                    if($a!="") {
+                     $gslb["pools"][$iitr]['poolname']=$a;
+                    }
+                    if($pe=0) {
+                        $gslb["pools"][$iitr]['pool']=$a."-----";
+                    }
                 }
                 if(is_numeric(trim($a))) {
                     // do codes here because it should work for expected_codes
@@ -204,7 +205,6 @@ function read_gslb() {
                         $m=0;                        
                         $mi=0;
                     }
-
                     if(in_array($a,array("ip","name","weight","monitor_ip"))) { 
                         if($a=="ip" && $mi==1) {
                             $m++;                        
@@ -245,18 +245,19 @@ function read_gslb() {
     return $gslb;
 }
 
+
 // will write the pools and topology to the lb topology yaml file
 // takes (array) writes (yaml)
 function write_gslb($gslb='') {  //,$cfg_gslb_polaris_lb
-    if($gslb="") return false;
-    global $polaris_lb;
+            global $polaris_lb;
             // gslb_lb is the file which holds pools and globalnames
             $gslb_lb= "# Polaris GSLB PHP Toolkit (c) Andrew Smalley - Loadbalancer.org configuration generated. \n";
             $gslb_lb .= "\n\npools:\n";
+
     // start pools 
     foreach($gslb['pools'] as $id =>$po) { 
         extract($po);
-            $gslb_lb .= "    ".$pool.":\n";
+            $gslb_lb .= "    ".$poolname.":\n";
             $gslb_lb .= "    monitor: ".$monitor."\n";
             $gslb_lb .= "    monitor_params:\n";
             extract($monitor_params);
@@ -273,6 +274,7 @@ function write_gslb($gslb='') {  //,$cfg_gslb_polaris_lb
             $gslb_lb .= "       name: ".$name."\n";
             $gslb_lb .= "       weight: ".$weight."\n";
         }
+    }
     // start globalnames
             $gslb_lb .= "\n\nglobalnames:\n";
     foreach($gslb['globalnames'] as $key=>$value) {
@@ -282,22 +284,8 @@ function write_gslb($gslb='') {  //,$cfg_gslb_polaris_lb
             $gslb_lb .=  "       ttl: ".$ttl."\n";
     }
     // open the polaris-lb.yaml file and write the contents. 
-    $gslb_polaris_lb = fopen($polaris_lb,"w") or die("Can not open to write ".$polaris_lb."<br/>");
+    $gslb_polaris_lb = fopen($polaris_lb,"w") or die("Can not open polaris-lb.yaml");
     fwrite($gslb_polaris_lb, $gslb_lb);
     fclose($gslb_polaris_lb);
     return true;
-}
-
-
-function ip_in_range( $ip, $range ) {
-    if ( strpos( $range, '/' ) == false ) {
-        $range .= '/32';
-    }
-    // $range is in IP/CIDR format eg 127.0.0.1/24
-    list( $range, $netmask ) = explode( '/', $range, 2 );
-    $range_decimal = ip2long( $range );
-    $ip_decimal = ip2long( $ip );
-    $wildcard_decimal = pow( 2, ( 32 - $netmask ) ) - 1;
-    $netmask_decimal = ~ $wildcard_decimal;
-    return ( ( $ip_decimal & $netmask_decimal ) == ( $range_decimal & $netmask_decimal ) );
 }
